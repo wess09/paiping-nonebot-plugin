@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "nonebot-plugin-paiping"
-version = "0.1.0"
+version = "0.1.1"
 description = "NoneBot plugin for detecting photos taken from screens in group chats."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -15,6 +19,11 @@ dependencies = [
     "PyYAML>=6.0.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/wess09/paiping-nonebot-plugin"
+Repository = "https://github.com/wess09/paiping-nonebot-plugin"
+Issues = "https://github.com/wess09/paiping-nonebot-plugin/issues"
+
 [project.optional-dependencies]
 dev = [
     "ruff>=0.4.0",
@@ -22,6 +31,9 @@ dev = [
 
 [tool.nonebot]
 plugins = ["nonebot_plugin_paiping"]
+
+[tool.setuptools.packages.find]
+include = ["nonebot_plugin_paiping*"]
 
 [tool.ruff]
 line-length = 100

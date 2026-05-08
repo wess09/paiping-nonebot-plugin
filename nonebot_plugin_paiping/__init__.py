@@ -17,7 +17,7 @@ from .config import Config
 from .detector import DetectionResult, detect_screen_photo
 from .runtime_config import RuntimeConfigStore, RuntimeSettings
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __plugin_meta__ = PluginMetadata(
     name="拍屏检测",
@@ -28,7 +28,7 @@ __plugin_meta__ = PluginMetadata(
         "/拍屏 提醒 文案、/拍屏 阈值 0.62、/拍屏 本群开、/拍屏 本群关"
     ),
     type="application",
-    homepage="https://github.com/nonebot/nonebot2",
+    homepage="https://github.com/wess09/paiping-nonebot-plugin",
     config=Config,
     supported_adapters={"~onebot.v11"},
     extra={"version": __version__},
@@ -69,7 +69,7 @@ async def handle_group_images(bot: Bot, event: GroupMessageEvent) -> None:
     async with httpx.AsyncClient(
         timeout=plugin_config.paiping_request_timeout,
         follow_redirects=True,
-        headers={"User-Agent": "nonebot-plugin-paiping/0.1.0"},
+        headers={"User-Agent": f"nonebot-plugin-paiping/{__version__}"},
     ) as client:
         for index, segment in enumerate(image_segments, start=1):
             image_bytes = await _read_image_bytes(bot, segment, client)
