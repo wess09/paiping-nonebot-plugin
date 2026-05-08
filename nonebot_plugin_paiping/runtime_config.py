@@ -18,6 +18,8 @@ class RuntimeSettings:
     score_threshold: float = 0.62
     group_whitelist: tuple[int, ...] = ()
     group_blacklist: tuple[int, ...] = ()
+    model_enabled: bool = False
+    model_file: str = "data/paiping/model.json"
     debug: bool = False
 
     @classmethod
@@ -29,6 +31,8 @@ class RuntimeSettings:
             score_threshold=config.paiping_score_threshold,
             group_whitelist=tuple(config.paiping_group_whitelist),
             group_blacklist=tuple(config.paiping_group_blacklist),
+            model_enabled=config.paiping_model_enabled,
+            model_file=str(config.paiping_model_file),
             debug=config.paiping_debug,
         )
 
@@ -53,6 +57,8 @@ class RuntimeSettings:
             ),
             group_whitelist=_as_int_tuple(data.get("group_whitelist"), defaults.group_whitelist),
             group_blacklist=_as_int_tuple(data.get("group_blacklist"), defaults.group_blacklist),
+            model_enabled=_as_bool(data.get("model_enabled"), defaults.model_enabled),
+            model_file=_as_text(data.get("model_file"), defaults.model_file),
             debug=_as_bool(data.get("debug"), defaults.debug),
         )
 
@@ -64,6 +70,8 @@ class RuntimeSettings:
             "score_threshold": self.score_threshold,
             "group_whitelist": list(self.group_whitelist),
             "group_blacklist": list(self.group_blacklist),
+            "model_enabled": self.model_enabled,
+            "model_file": self.model_file,
             "debug": self.debug,
         }
 
@@ -168,4 +176,3 @@ def _as_int_tuple(value: Any, default: tuple[int, ...]) -> tuple[int, ...]:
         if number not in result:
             result.append(number)
     return tuple(result)
-

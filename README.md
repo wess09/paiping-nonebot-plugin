@@ -31,6 +31,8 @@ reply: 检测到疑似拍屏照片，请尽量发送截图或原图。
 score_threshold: 0.62
 group_whitelist: []
 group_blacklist: []
+model_enabled: false
+model_file: data/paiping/model.json
 debug: false
 ```
 
@@ -74,6 +76,9 @@ PAIPING_DEBUG=false
 /拍屏 回复 开
 /拍屏 回复 关
 /拍屏 阈值 0.62
+/拍屏 模型 开
+/拍屏 模型 关
+/拍屏 模型 文件 data/paiping/model.json
 /拍屏 调试 开
 /拍屏 调试 关
 /拍屏 重载
@@ -93,4 +98,41 @@ python scripts/paiping_probe.py path\to\image_or_dir
 
 ```bash
 python scripts/paiping_probe.py samples --threshold 0.58
+```
+
+## 训练二分类模型
+
+如果你已经把样本分成 `拍屏` 和 `正常` 两个目录，例如：
+
+```text
+验证/
+  拍屏/
+  正常/
+```
+
+可以训练一个轻量二分类模型：
+
+```bash
+python scripts/train_paiping_model.py --dataset 验证 --output data/paiping/model.json --workers 8 --cache data/paiping/feature_cache.jsonl
+```
+
+`--workers 0` 表示使用全部 CPU 核心；`--cache` 会缓存 OpenCV 特征，后续重复训练会快很多。
+
+模型不依赖 `sklearn` 或 `torch`，只使用现有 OpenCV 特征和 `numpy` 训练一个小型线性分类器。启用模型：
+
+```yaml
+model_enabled: true
+model_file: data/paiping/model.json
+```
+
+也可以用命令启用：
+
+```text
+/拍屏 模型 开
+```
+
+本地测试模型概率：
+
+```bash
+python scripts/paiping_probe.py 验证 --model data/paiping/model.json
 ```

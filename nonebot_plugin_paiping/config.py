@@ -14,6 +14,8 @@ class Config(BaseModel):
     paiping_score_threshold: float = Field(default=0.62, ge=0.0, le=1.0)
     paiping_group_whitelist: list[int] = Field(default_factory=list)
     paiping_group_blacklist: list[int] = Field(default_factory=list)
+    paiping_model_enabled: bool = False
+    paiping_model_file: Path = Path("data/paiping/model.json")
     paiping_max_images_per_message: int = Field(default=4, ge=1, le=20)
     paiping_max_image_bytes: int = Field(default=10 * 1024 * 1024, ge=256 * 1024)
     paiping_request_timeout: float = Field(default=15.0, ge=1.0)

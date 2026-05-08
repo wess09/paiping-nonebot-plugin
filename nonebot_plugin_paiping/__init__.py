@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import json
+from pathlib import Path
 from typing import Any, Iterable
 
 import cv2
@@ -15,6 +17,7 @@ from nonebot.plugin import PluginMetadata
 
 from .config import Config
 from .detector import DetectionResult, detect_screen_photo
+from .ml_model import LinearPaipingModel, extract_model_features, load_model
 from .runtime_config import RuntimeConfigStore, RuntimeSettings
 
 __version__ = "0.1.1"
@@ -25,7 +28,8 @@ __plugin_meta__ = PluginMetadata(
     usage=(
         "群聊发送图片时自动检测。\n"
         "SuperUser 命令：/拍屏 状态、/拍屏 开、/拍屏 关、"
-        "/拍屏 提醒 文案、/拍屏 阈值 0.62、/拍屏 本群开、/拍屏 本群关"
+        "/拍屏 提醒 文案、/拍屏 阈值 0.62、/拍屏 本群开、/拍屏 本群关、"
+        "/拍屏 模型 开"
     ),
     type="application",
     homepage="https://github.com/wess09/paiping-nonebot-plugin",
@@ -39,6 +43,9 @@ runtime_config = RuntimeConfigStore(
     plugin_config.paiping_config_file,
     RuntimeSettings.from_plugin_config(plugin_config),
 )
+_model_cache_path: Path | None = None
+_model_cache_mtime: float | None = None
+_model_cache: LinearPaipingModel | None = None
 
 paiping_matcher = on_message(priority=plugin_config.paiping_priority, block=False)
 paiping_command = on_command(
@@ -86,6 +93,7 @@ async def handle_group_images(bot: Bot, event: GroupMessageEvent) -> None:
                 threshold=settings.score_threshold,
                 min_size=plugin_config.paiping_min_image_side,
             )
+            result = _apply_model_if_enabled(image, result, settings)
             _log_result(group_id, index, result, settings)
 
             if result.is_screen_photo and settings.reply_when_detected:
@@ -151,6 +159,9 @@ async def handle_paiping_command(event: Event, args: Message = CommandArg()) -> 
         state = "开启" if settings.debug else "关闭"
         await paiping_command.finish(f"拍屏调试输出已{state}。")
 
+    if command in {"模型", "model"}:
+        await paiping_command.finish(_handle_model_command(value))
+
     if command in {"本群开", "当前群开", "group-on"}:
         group_id = _event_group_id(event)
         if group_id is None:
@@ -178,6 +189,26 @@ def _is_group_enabled(group_id: int, settings: RuntimeSettings) -> bool:
     if whitelist and group_id not in whitelist:
         return False
     return group_id not in blacklist
+
+
+def _handle_model_command(value: str) -> str:
+    subcommand, subvalue = _split_command(value)
+    if not subcommand or subcommand in {"状态", "status"}:
+        return _format_model_status(runtime_config.get())
+
+    enabled = _parse_bool(subcommand)
+    if enabled is not None:
+        settings = runtime_config.update(model_enabled=enabled)
+        return _format_model_status(settings)
+
+    if subcommand in {"文件", "file", "路径", "path"}:
+        if not subvalue:
+            return "用法：/拍屏 模型 文件 data/paiping/model.json"
+        settings = runtime_config.update(model_file=subvalue)
+        _clear_model_cache()
+        return _format_model_status(settings)
+
+    return "用法：/拍屏 模型 状态、/拍屏 模型 开、/拍屏 模型 关、/拍屏 模型 文件 data/paiping/model.json"
 
 
 async def _read_image_bytes(
@@ -248,6 +279,68 @@ def _decode_image(image_bytes: bytes) -> np.ndarray | None:
     if image is None or image.size == 0:
         return None
     return image
+
+
+def _apply_model_if_enabled(
+    image: np.ndarray,
+    result: DetectionResult,
+    settings: RuntimeSettings,
+) -> DetectionResult:
+    if not settings.model_enabled:
+        return result
+
+    model = _get_model(settings)
+    if model is None:
+        return result
+
+    feature_values = extract_model_features(image, result)
+    probability = model.predict_probability(feature_values)
+    features = dict(result.features)
+    features["rule_score"] = result.score
+    features["model_probability"] = probability
+
+    reasons = list(result.reasons)
+    reasons.append(f"二分模型拍屏概率：{probability:.2f}")
+    return DetectionResult(
+        is_screen_photo=probability >= model.threshold,
+        score=round(probability, 4),
+        threshold=round(model.threshold, 4),
+        features=features,
+        reasons=reasons,
+    )
+
+
+def _get_model(settings: RuntimeSettings) -> LinearPaipingModel | None:
+    global _model_cache_path, _model_cache_mtime, _model_cache
+
+    path = Path(settings.model_file)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    if not path.exists():
+        logger.warning("paiping: model file does not exist: {}", path)
+        return None
+
+    mtime = path.stat().st_mtime
+    if _model_cache is not None and _model_cache_path == path and _model_cache_mtime == mtime:
+        return _model_cache
+
+    try:
+        _model_cache = load_model(path)
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        logger.warning("paiping: failed to load model {}: {}", path, exc)
+        return None
+
+    _model_cache_path = path
+    _model_cache_mtime = mtime
+    logger.info("paiping: loaded model {} threshold={}", path, _model_cache.threshold)
+    return _model_cache
+
+
+def _clear_model_cache() -> None:
+    global _model_cache_path, _model_cache_mtime, _model_cache
+    _model_cache_path = None
+    _model_cache_mtime = None
+    _model_cache = None
 
 
 def _format_reply(result: DetectionResult, settings: RuntimeSettings) -> str:
@@ -332,12 +425,13 @@ def _format_status(event: Event) -> str:
     group_id = _event_group_id(event)
     lines = [
         _format_brief_status(settings),
+        _format_model_status(settings),
         _format_group_lists(settings),
         f"配置文件：{runtime_config.path}",
     ]
     if group_id is not None:
         state = "开启" if _is_group_enabled(group_id, settings) else "关闭"
-        lines.insert(2, f"当前群：{group_id}，检测{state}")
+        lines.insert(3, f"当前群：{group_id}，检测{state}")
     return "\n".join(lines)
 
 
@@ -363,6 +457,11 @@ def _format_group_list(groups: tuple[int, ...]) -> str:
     return "、".join(str(group) for group in groups)
 
 
+def _format_model_status(settings: RuntimeSettings) -> str:
+    state = "开启" if settings.model_enabled else "关闭"
+    return f"二分模型：{state}；模型文件：{settings.model_file}"
+
+
 def _command_help() -> str:
     return (
         "拍屏检测命令：\n"
@@ -372,6 +471,8 @@ def _command_help() -> str:
         "/拍屏 提醒 检测到疑似拍屏，请发截图或原图\n"
         "/拍屏 回复 开 或 /拍屏 回复 关\n"
         "/拍屏 阈值 0.62\n"
+        "/拍屏 模型 开 或 /拍屏 模型 关\n"
+        "/拍屏 模型 文件 data/paiping/model.json\n"
         "/拍屏 调试 开 或 /拍屏 调试 关\n"
         "/拍屏 重载"
     )
