@@ -1,0 +1,28 @@
+[project]
+name = "nonebot-plugin-paiping"
+version = "0.1.0"
+description = "NoneBot plugin for detecting photos taken from screens in group chats."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "AzurLane" }]
+dependencies = [
+    "nonebot2>=2.2.0",
+    "nonebot-adapter-onebot>=2.4.0",
+    "httpx>=0.24.0",
+    "numpy>=1.23.0",
+    "opencv-python-headless>=4.8.0",
+    "pydantic>=1.10.0",
+    "PyYAML>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4.0",
+]
+
+[tool.nonebot]
+plugins = ["nonebot_plugin_paiping"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
